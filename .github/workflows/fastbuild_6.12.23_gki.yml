@@ -115,42 +115,42 @@ jobs:
           cd kernel_workspace
           echo "当前仓库：$GITHUB_REPOSITORY"
           echo "当前分支：$GITHUB_REF_NAME"
-          
+
           sudo apt-mark hold firefox &&
           sudo apt-mark hold libc-bin &&
           sudo apt purge man-db &&
           sudo rm -rf /var/lib/man-db/auto-update &&
           sudo apt update &&
           sudo apt-get install -y --no-install-recommends binutils python-is-python3 libssl-dev libelf-dev libdw-dev &
-          
+
           wget https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/lib/ccache-x86-64 -O ccache &&
           sudo cp -f ./ccache /usr/bin/ccache &&
           sudo chmod +x /usr/bin/ccache &&
           rm -f ./ccache &
-          
+
           echo "正在克隆源码仓库..."
-          aria2c -s16 -x16 -k1M https://github.com/cctv18/android_gki_kernel_common/archive/refs/heads/android16-6.12-2025-06.zip -o common.zip && 
-          unzip -q common.zip && 
+          aria2c -s16 -x16 -k1M https://github.com/cctv18/android_gki_kernel_common/archive/refs/heads/android16-6.12-2025-06.zip -o common.zip &&
+          unzip -q common.zip &&
           mv "android_gki_kernel_common-android16-6.12-2025-06" common &&
           rm -rf common.zip &
-          
+
           echo "正在克隆llvm-clang19工具链..." &&
           mkdir -p clang19 &&
           aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang19-r536225/clang-r536225.zip -o clang.zip &&
           unzip -q clang.zip -d clang19 &&
           rm -rf clang.zip &
-          
+
           echo "正在克隆Rust 1.82.0工具链..." &&
           mkdir -p rust &&
           aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang19-r536225/rust.zip -o rust.zip &&
           unzip -q rust.zip -d rust &&
           rm -rf rust.zip &
-          
+
           echo "正在克隆构建工具..." &&
           aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang19-r536225/build-tools.zip -o build-tools.zip &&
           unzip -q build-tools.zip &&
           rm -rf build-tools.zip &
-          
+
           wait
           echo "所有源码及llvm-clang19工具链初始化完成！"
           echo "正在去除 dirty 后缀..."
@@ -186,11 +186,11 @@ jobs:
             echo "检测到本地已成功载入 ccache 缓存，跳过公共 ccache 拉取！"
             exit 0
           fi
-          
+
           echo "未命中缓存，尝试拉取最新公共 ccache ..."
           mkdir -p ${{ env.CCACHE_DIR }}
           FILE_NAME="ccache-${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }}.tar.zst"
-          
+
           if gh release download -p "$FILE_NAME" -R cctv18/public_ccache; then
             echo "成功下载 $FILE_NAME，正在解压..."
             tar -I zstd -xf "$FILE_NAME" -C ${{ env.CCACHE_DIR }}
@@ -210,7 +210,7 @@ jobs:
           else
             echo "旧缓存不存在或已被清理！"
           fi
-      
+
       - name: 初始化并配置ccache
         run: |
           export CCACHE_COMPILERCHECK="none"
@@ -219,16 +219,16 @@ jobs:
           export CCACHE_NOHARDLINK="true"
           export CCACHE_DIR="${{ env.CCACHE_DIR }}"
           export CCACHE_MAXSIZE="${{ env.CCACHE_MAXSIZE }}"
-          
+
           mkdir -p "$CCACHE_DIR"
-          
+
           echo "配置ccache缓存大小为: $CCACHE_MAXSIZE"
           ccache -M "$CCACHE_MAXSIZE"
           ccache -o compression=true
-          
+
           echo "ccache初始状态:"
           ccache -s
-          
+
           if [ "${{ steps.ccache-restore.outputs.cache-hit }}" == 'true' ]; then
             echo "ccache缓存命中详情:"
             ccache -sv
@@ -245,12 +245,15 @@ jobs:
             GIT_COMMIT_HASH=$(git rev-parse --short=8 HEAD)
             echo "当前提交哈希: $GIT_COMMIT_HASH"
             export KSU_VERSION=$KSU_VERSION
+
             for i in {1..3}; do
               KSU_API_VERSION=$(curl -s "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/builtin/kernel/Makefile" | grep -m1 "KSU_VERSION_API :=" | awk -F'= ' '{print $2}' | tr -d '[:space:]')
               [ -n "$KSU_API_VERSION" ] && break || sleep 1
             done
+
             [ -z "$KSU_API_VERSION" ] && KSU_API_VERSION="3.1.7"
             echo "KSU_API_VERSION=$KSU_API_VERSION" >> $GITHUB_ENV
+
             VERSION_DEFINITIONS=$'define get_ksu_version_full\nv\\$1-'"$GIT_COMMIT_HASH"$'@cctv18\nendef\n\nKSU_VERSION_API := '"$KSU_API_VERSION"$'\nKSU_VERSION_FULL := v'"$KSU_API_VERSION"$'-'"$GIT_COMMIT_HASH"$'@cctv18'
             sed -i '/define get_ksu_version_full/,/endef/d' kernel/Makefile
             sed -i '/KSU_VERSION_API :=/d' kernel/Makefile
@@ -260,9 +263,11 @@ jobs:
               1
               END {if (!inserted) print def}
             ' kernel/Makefile > kernel/Makefile.tmp && mv kernel/Makefile.tmp kernel/Makefile
+
             KSU_VERSION=$(expr $(git rev-list --count main) + 37185 2>/dev/null || echo 114514)
             echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
             echo "ksuver=$KSU_VERSION" >> $GITHUB_OUTPUT
+
             grep -A10 "REPO_OWNER" kernel/Makefile
             grep "KSU_VERSION_FULL" kernel/Makefile
             echo "SukiSU版本号: v${KSU_API_VERSION}-${GIT_COMMIT_HASH}@cctv18"
@@ -316,13 +321,14 @@ jobs:
           else
             echo "已选择无内置KernelSU模式，跳过susfs配置..."
           fi
+
           if [[ ${{ github.event.inputs.ksu_type }} == "ksu" ]]; then
             echo "正在为原版 KernelSU (tiann/KernelSU)添加补丁..."
             cp ./susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./KernelSU/
             cd ./KernelSU
             patch -p1 < 10_enable_susfs_for_ksu.patch || true
           fi
-          
+
       - name: 应用lz4 1.10.0 & zstd 1.5.7补丁
         if: inputs.lz4_enable
         run: |
@@ -342,7 +348,7 @@ jobs:
           cd kernel_workspace/common
           wget https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/other_patch/lz4kd.patch
           patch -p1 -F 3 < lz4kd.patch || true
-          
+
       - name: 添加SUSFS 配置项
         if: inputs.susfs_enable
         run: |
@@ -362,19 +368,23 @@ jobs:
           echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> ./common/arch/arm64/configs/gki_defconfig
-          
+
       - name: 添加 KSU & 其他配置项
         run: |
           cd kernel_workspace
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
+
           if [[ ${{ github.event.inputs.kpm_enable }} == 'builtin' && ( "${{ github.event.inputs.ksu_type }}" == "sukisu" || "${{ github.event.inputs.ksu_type }}" == "resukisu" ) ]]; then
             echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
+
           if [[ "${{ github.event.inputs.susfs_enable }}" == "false" ]]; then
             echo "CONFIG_KSU_SUSFS=n" >> ./common/arch/arm64/configs/gki_defconfig
           fi
+
           echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
+
           if [[ "${{ github.event.inputs.lz4kd_enable }}" == "true" ]]; then
             echo "CONFIG_ZSMALLOC=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_CRYPTO_LZ4HC=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -386,12 +396,13 @@ jobs:
             echo "CONFIG_ZRAM_BACKEND_LZ4KD=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_ZRAM_BACKEND_842=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
+
           echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> ./common/arch/arm64/configs/gki_defconfig
           sed -i 's/check_defconfig//' ./common/build.config.gki
           echo "CONFIG_HEADERS_INSTALL=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_RUST=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_ANDROID_BINDER_IPC_RUST=m" >> ./common/arch/arm64/configs/gki_defconfig
-          
+
       - name: 启用网络功能增强优化配置
         if: inputs.better_net
         run: |
@@ -512,6 +523,8 @@ jobs:
           echo "FINAL_KERNEL_SUFFIX=$FINAL_KERNEL_SUFFIX" >> "$GITHUB_ENV"
           echo "KBUILD_BUILD_TIMESTAMP=$DATESTR" >> "$GITHUB_ENV"
           echo "KBUILD_BUILD_VERSION=1" >> "$GITHUB_ENV"
+          echo "KBUILD_BUILD_USER=kleaf" >> "$GITHUB_ENV"
+          echo "KBUILD_BUILD_HOST=build-host" >> "$GITHUB_ENV"
           echo "SOURCE_DATE_EPOCH=$SOURCE_EPOCH" >> "$GITHUB_ENV"
           echo "FAKESTAT=$FAKE_DATE" >> "$GITHUB_ENV"
           echo "FAKETIME=@$FAKE_DATE" >> "$GITHUB_ENV"
@@ -522,6 +535,7 @@ jobs:
 
           echo "最终内核后缀：$FINAL_KERNEL_SUFFIX"
           echo "最终构建时间：$DATESTR"
+          echo "构建用户：kleaf@build-host"
           echo "SOURCE_DATE_EPOCH：$SOURCE_EPOCH"
 
       - name: 添加制作名称
@@ -538,7 +552,7 @@ jobs:
           sudo sed -i "s|-4k|-${FINAL_KERNEL_SUFFIX}|g" ./common/arch/arm64/configs/gki_defconfig
           sed -i 's/${scm_version}//' ./common/scripts/setlocalversion
           echo "CONFIG_LOCALVERSION_AUTO=n" >> ./common/arch/arm64/configs/gki_defconfig
-           
+
       - name: 构建内核
         run: |
           WORKDIR="$(pwd)"
@@ -557,7 +571,7 @@ jobs:
           echo "Rustc版本: $RUSTC_VERSION"
           echo "Bindgen版本: $BINDGEN_VERSION"
           pahole_version=$(pahole --version 2>/dev/null | head -n1); [ -z "$pahole_version" ] && echo "pahole版本：未安装" || echo "pahole版本：$pahole_version"
-          
+
           export CCACHE_LOGFILE="${{ github.workspace }}/kernel_workspace/ccache.log"
           export CCACHE_COMPILERCHECK="none"
           export CCACHE_BASEDIR="${{ github.workspace }}"
@@ -567,7 +581,7 @@ jobs:
           export CCACHE_MAXSIZE="3G"
           export CCACHE_IS_KERNEL_COMPILING="true"
           echo "sloppiness = file_stat_matches,include_file_ctime,include_file_mtime,pch_defines,file_macro,time_macros" >> "$CCACHE_DIR/ccache.conf"
-          
+
           cd kernel_workspace/common
           wget https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/lib/libfakestat.so
           wget https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/lib/libfaketimeMT.so
@@ -575,18 +589,47 @@ jobs:
 
           export KBUILD_BUILD_TIMESTAMP="${KBUILD_BUILD_TIMESTAMP}"
           export KBUILD_BUILD_VERSION="${KBUILD_BUILD_VERSION:-1}"
+          export KBUILD_BUILD_USER="kleaf"
+          export KBUILD_BUILD_HOST="build-host"
           export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH}"
           export FAKESTAT="${FAKESTAT}"
           export FAKETIME="${FAKETIME}"
 
+          echo "正在强制设置内核构建用户为 kleaf@build-host..."
+          cat > scripts/mkcompile_h <<'MKCOMPILE_EOF'
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+
+UTS_MACHINE=$1
+CC_VERSION="$2"
+LD=$3
+
+LINUX_COMPILE_BY="kleaf"
+LINUX_COMPILE_HOST="build-host"
+
+LD_VERSION=$(LC_ALL=C "$LD" -v | head -n1 | sed -e 's/(compatible with [^)]*)//' -e 's/[[:space:]]*$//')
+
+cat <<EOF
+#define UTS_MACHINE "${UTS_MACHINE}"
+#define LINUX_COMPILE_BY "${LINUX_COMPILE_BY}"
+#define LINUX_COMPILE_HOST "${LINUX_COMPILE_HOST}"
+#define LINUX_COMPILER "${CC_VERSION}, ${LD_VERSION}"
+EOF
+MKCOMPILE_EOF
+          chmod +x scripts/mkcompile_h
+
           echo "KBUILD_BUILD_TIMESTAMP=$KBUILD_BUILD_TIMESTAMP"
           echo "KBUILD_BUILD_VERSION=$KBUILD_BUILD_VERSION"
+          echo "KBUILD_BUILD_USER=$KBUILD_BUILD_USER"
+          echo "KBUILD_BUILD_HOST=$KBUILD_BUILD_HOST"
           echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
           echo "FAKESTAT=$FAKESTAT"
           echo "FAKETIME=$FAKETIME"
 
           echo "KBUILD_BUILD_TIMESTAMP=$KBUILD_BUILD_TIMESTAMP" >> $GITHUB_ENV
           echo "KBUILD_BUILD_VERSION=$KBUILD_BUILD_VERSION" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_USER=$KBUILD_BUILD_USER" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_HOST=$KBUILD_BUILD_HOST" >> $GITHUB_ENV
           echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" >> $GITHUB_ENV
           echo "FAKESTAT=$FAKESTAT" >> $GITHUB_ENV
           echo "FAKETIME=$FAKETIME" >> $GITHUB_ENV
@@ -601,6 +644,8 @@ jobs:
           echo 'export FAKETIME="'$FAKETIME'"' >> cc-wrapper
           echo 'export KBUILD_BUILD_TIMESTAMP="'$KBUILD_BUILD_TIMESTAMP'"' >> cc-wrapper
           echo 'export KBUILD_BUILD_VERSION="'$KBUILD_BUILD_VERSION'"' >> cc-wrapper
+          echo 'export KBUILD_BUILD_USER="kleaf"' >> cc-wrapper
+          echo 'export KBUILD_BUILD_HOST="build-host"' >> cc-wrapper
           echo 'export SOURCE_DATE_EPOCH="'$SOURCE_DATE_EPOCH'"' >> cc-wrapper
           echo 'ccache $REAL_CLANG_PATH "$@"' >> cc-wrapper
 
@@ -610,9 +655,11 @@ jobs:
           echo 'export FAKETIME="'$FAKETIME'"' >> ld-wrapper
           echo 'export KBUILD_BUILD_TIMESTAMP="'$KBUILD_BUILD_TIMESTAMP'"' >> ld-wrapper
           echo 'export KBUILD_BUILD_VERSION="'$KBUILD_BUILD_VERSION'"' >> ld-wrapper
+          echo 'export KBUILD_BUILD_USER="kleaf"' >> ld-wrapper
+          echo 'export KBUILD_BUILD_HOST="build-host"' >> ld-wrapper
           echo 'export SOURCE_DATE_EPOCH="'$SOURCE_DATE_EPOCH'"' >> ld-wrapper
           echo 'ld.lld "$@"' >> ld-wrapper
-          
+
           echo "--- [Wrapper Test] 正在创建通用的时间劫持测试脚本 ---"
           echo '#!/bin/bash' > test-wrapper.sh
           echo 'export LD_PRELOAD="'$PRELOAD_LIBS'"' >> test-wrapper.sh
@@ -620,20 +667,24 @@ jobs:
           echo 'export FAKETIME="'$FAKETIME'"' >> test-wrapper.sh
           echo 'export KBUILD_BUILD_TIMESTAMP="'$KBUILD_BUILD_TIMESTAMP'"' >> test-wrapper.sh
           echo 'export KBUILD_BUILD_VERSION="'$KBUILD_BUILD_VERSION'"' >> test-wrapper.sh
+          echo 'export KBUILD_BUILD_USER="kleaf"' >> test-wrapper.sh
+          echo 'export KBUILD_BUILD_HOST="build-host"' >> test-wrapper.sh
           echo 'export SOURCE_DATE_EPOCH="'$SOURCE_DATE_EPOCH'"' >> test-wrapper.sh
           echo 'echo ">>> Wrapper 内部环境检查完毕."' >> test-wrapper.sh
           echo 'exec "$@"' >> test-wrapper.sh
           chmod +x test-wrapper.sh
+
           echo "--- [Wrapper Test] 正在测试 (date) 命令 ---"
           ./test-wrapper.sh date
           echo "--- [Wrapper Test] 正在测试 (stat) 命令 ---"
           ./test-wrapper.sh stat ./Makefile
           echo "--- [Wrapper Test] 测试完毕 ---"
+
           chmod +x cc-wrapper ld-wrapper
           echo "--- 编译前环境时间: $(LD_PRELOAD=$PRELOAD_LIBS date) ---"
           echo "--- 编译前环境文件时间戳: ---"
           LD_PRELOAD=$PRELOAD_LIBS stat ./Makefile
-          
+
           COMMON_REAL_PATH=$(pwd -P)
           ROOT_REAL_PATH=$(dirname "$COMMON_REAL_PATH")
           KCFLAGS+=" -fdebug-prefix-map=$ROOT_REAL_PATH=."
@@ -658,12 +709,15 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-gnu-
           export LD=ld.lld HOSTLD=ld.lld AR=llvm-ar NM=llvm-nm AS=clang READELF=llvm-readelf
           export OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump OBJSIZE=llvm-size STRIP=llvm-strip
+
           source "./_setup_env.sh" 2>/dev/null || true
 
           export KBUILD_BUILD_TIMESTAMP="$KBUILD_BUILD_TIMESTAMP"
           export KBUILD_BUILD_VERSION="${KBUILD_BUILD_VERSION:-1}"
+          export KBUILD_BUILD_USER="kleaf"
+          export KBUILD_BUILD_HOST="build-host"
           export SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH"
-          
+
           sudo rm -rf /usr/share/dotnet &
           sudo rm -rf /usr/local/lib/android &
           sudo rm -rf /opt/ghc &
@@ -672,17 +726,22 @@ jobs:
           make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="clang" LD="ld.lld" OBJCOPY="llvm-objcopy" O=out gki_defconfig &&
           export CC="$(pwd)/cc-wrapper" && export LD="$(pwd)/ld-wrapper" &&
           make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" OBJCOPY="llvm-objcopy" O=out Image
-          
+
           echo "--- 检查最终 utsversion.h ---"
           cat out/include/generated/utsversion.h || true
 
-          echo "--- 检查 Image 内是否包含构建时间 ---"
-          strings out/arch/arm64/boot/Image | grep -E "SMP|PREEMPT|UTC|1970|2025|2026" | head -n 30 || true
+          echo "--- 检查 compile.h ---"
+          cat out/include/generated/compile.h || true
+
+          echo "--- 检查 Image 内是否包含构建信息 ---"
+          strings out/arch/arm64/boot/Image | grep -E "Linux version|SMP|PREEMPT|UTC|1970|build-user|kleaf|build-host" | head -n 40 || true
 
           echo "--- 编译后环境时间: $(LD_PRELOAD=$PRELOAD_LIBS date) ---"
           echo "--- 编译后环境文件时间戳: ---"
           LD_PRELOAD=$PRELOAD_LIBS stat ./Makefile
+
           echo "内核编译完成！"
+
           if [[ "${{ github.event.inputs.ccache_debug }}" == "true" ]]; then
             echo "正在打包ccache日志及调试信息..."
             cd ..
@@ -690,6 +749,7 @@ jobs:
             cp ./common/out/.config ./config
             zip -r9 debug.zip ccache.log config vmlinux.symvers
           fi
+
           echo "ccache状态："
           ccache -s
           echo "编译后空间:"
@@ -701,7 +761,7 @@ jobs:
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ${{ env.CCACHE_KEY }}-${{ runner.os }}-${{ github.ref_name }}
-         
+
       - name: 应用KPM并修补内核
         run: |
           if [[ ${{ github.event.inputs.kpm_enable }} == 'builtin' && ( "${{ github.event.inputs.ksu_type }}" == "sukisu" || "${{ github.event.inputs.ksu_type }}" == "resukisu" ) ]]; then
@@ -713,6 +773,7 @@ jobs:
             rm -f Image
             mv oImage Image
           fi
+
           if [[ ${{ github.event.inputs.kpm_enable }} == 'kpn' ]]; then
             echo "正在应用KP-N并修补内核..."
             cd kernel_workspace/common/out/arch/arm64/boot
@@ -723,7 +784,7 @@ jobs:
             rm -f Image
             mv oImage Image
           fi
-          
+
       - name: 克隆 AnyKernel3 并打包
         id: create_zip
         run: |
@@ -732,10 +793,12 @@ jobs:
           rm -rf ./AnyKernel3/.git
           cd AnyKernel3
           cp ../common/out/arch/arm64/boot/Image ./Image
+
           if [[ ! -f ./Image ]]; then
             echo "未找到内核镜像文件，构建可能出错"
             exit 1
           fi
+
           if [[ ${{ github.event.inputs.ksu_type }} == "sukisu" ]]; then
             KSU_TYPENAME="SukiSU"
           elif [[ ${{ github.event.inputs.ksu_type }} == "resukisu" ]]; then
@@ -747,9 +810,11 @@ jobs:
           else
             KSU_TYPENAME="none"
           fi
+
           if [[ "${{ github.event.inputs.lz4kd_enable }}" == "true" ]]; then
             wget https://raw.githubusercontent.com/$GITHUB_REPOSITORY/refs/heads/$GITHUB_REF_NAME/zram.zip
           fi
+
           if [[ ${{ github.event.inputs.kpm_enable }} == 'kpn' ]]; then
             wget https://github.com/cctv18/KPatch-Next/releases/latest/download/kpn.zip
           fi
@@ -757,7 +822,7 @@ jobs:
           AK3_NAME=AnyKernel3_${KSU_TYPENAME}_${{ env.KSUVER }}_${{ env.KERNEL_VERSION }}_${FINAL_KERNEL_SUFFIX}.zip
           zip -r ../$AK3_NAME ./*
           echo "ak3name=$AK3_NAME" >> $GITHUB_OUTPUT
-          
+
           CLEAN_SUB_VERSION="${{ env.SUB_VERSION }}"
           CLEAN_SUB_VERSION="${CLEAN_SUB_VERSION%_mtk}"
           FULL_VERSION=${{ env.KERNEL_VERSION }}.${CLEAN_SUB_VERSION}-${FINAL_KERNEL_SUFFIX}
@@ -805,7 +870,7 @@ jobs:
       contents: write
       packages: write
       actions: read
-      
+
     steps:
       - name: 下载 ZIP 工件
         uses: actions/download-artifact@v8
@@ -845,8 +910,9 @@ jobs:
           else
             KSU_TYPENAME="无内置KSU"
           fi
+
           echo "KSU_TYPENAME=$KSU_TYPENAME" >> $GITHUB_ENV
-         
+
       - name: 创建发布
         id: create_release
         env:
@@ -871,11 +937,11 @@ jobs:
           - SukiSU Ultra管理器下载：[SukiSU-Ultra](https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases)
           - KernelSU Next管理器下载：[KernelSU-Next](https://github.com/KernelSU-Next/KernelSU-Next/releases)
           - KSU原版管理器下载：[KernelSU](https://github.com/tiann/KernelSU/releases)
-          
+
           ### ⏫️ 更新内容：
           - 更新${{ env.KSU_TYPENAME }}至最新版本（${{ needs.build.outputs.ksuver }}）
           - (预留)
-          
+
           ### 📋 安装方法 | Installation Guide
           1. 若你的手机已经安装了第三方Recovery（如TWRP)，可下载对应机型的AnyKernel刷机包后进入Recovery模式，通过Recovery刷入刷机包后重启设备；
           2. 若你的手机之前已有 root 权限，可在手机上安装[HorizonKernelFlasher](https://github.com/libxzr/HorizonKernelFlasher/releases)，在HorizonKernelFlasher中刷入AnyKernel刷机包并重启；
@@ -883,7 +949,7 @@ jobs:
           4. 刷入无lz4kd补丁版的内核前若刷入过lz4kd补丁版的内核，为避免出错，请先关闭zram模块；
           5. 由于KernelSU上游更新了元模块功能，最新版KSU管理器（包括除KernelSU Next以外的各分支）需要配合元模块(metamodule)才能正常挂载模块。目前的元模块包括[meta overlayfs](https://github.com/KernelSU-Modules-Repo/meta-overlayfs), [mountify](https://github.com/backslashxx/mountify), [meta magicmount](https://github.com/7a72/meta-magic_mount/), [meta magicmount rs](https://github.com/Tools-cx-app/meta-magic_mount/), [hybrid mount](https://github.com/YuzakiKokuban/meta-hybrid_mount)等。若你是第一次使用KSU或刚从旧版KSU管理器升级至新版，请先安装一个元模块，这样其他涉及系统挂载的模块才能正常运行；
           6. KernelPatch Next（即KPN）是一个独立于KSU的KPM实现，可以运行在任意KSU/面具环境中（不适用于Apatch），且不能与(Re)SukiSU内置的kpm功能共同使用，使用前请保证你的内核没有内置的kpm实现/修补。
-          
+
           #### ※※※刷写内核有风险，为防止出现意外导致手机变砖，在刷入内核前请务必用[KernelFlasher](https://github.com/capntrips/KernelFlasher)等软件备份boot等关键启动分区!※※※
           EOF
 
