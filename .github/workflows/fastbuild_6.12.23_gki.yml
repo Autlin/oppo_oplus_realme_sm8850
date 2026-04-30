@@ -5,7 +5,7 @@ env:
   ANDROID_VERSION: 'android16'
   KERNEL_VERSION: '6.12'
   SUB_VERSION: '23_gki'
-  KERNEL_NAME: 'android16-5-gb23e74f69076-abogki452159376-4k'
+  KERNEL_NAME: 'android16-5-ga8f88ad96df3-ab13929693-4k'
   CCACHE_KEY: ccache-ecsv2-gki-6.12.23
 
 on:
@@ -512,6 +512,8 @@ jobs:
           echo "FINAL_KERNEL_SUFFIX=$FINAL_KERNEL_SUFFIX" >> "$GITHUB_ENV"
           echo "KBUILD_BUILD_TIMESTAMP=$DATESTR" >> "$GITHUB_ENV"
           echo "KBUILD_BUILD_VERSION=1" >> "$GITHUB_ENV"
+          echo "KBUILD_BUILD_USER=kleaf" >> "$GITHUB_ENV"
+          echo "KBUILD_BUILD_HOST=build-host" >> "$GITHUB_ENV"
           echo "SOURCE_DATE_EPOCH=$SOURCE_EPOCH" >> "$GITHUB_ENV"
           echo "FAKESTAT=$FAKE_DATE" >> "$GITHUB_ENV"
           echo "FAKETIME=@$FAKE_DATE" >> "$GITHUB_ENV"
@@ -522,6 +524,7 @@ jobs:
 
           echo "最终内核后缀：$FINAL_KERNEL_SUFFIX"
           echo "最终构建时间：$DATESTR"
+          echo "构建用户：kleaf@build-host"
           echo "SOURCE_DATE_EPOCH：$SOURCE_EPOCH"
 
       - name: 添加制作名称
@@ -575,18 +578,24 @@ jobs:
 
           export KBUILD_BUILD_TIMESTAMP="${KBUILD_BUILD_TIMESTAMP}"
           export KBUILD_BUILD_VERSION="${KBUILD_BUILD_VERSION:-1}"
+          export KBUILD_BUILD_USER="${KBUILD_BUILD_USER:-kleaf}"
+          export KBUILD_BUILD_HOST="${KBUILD_BUILD_HOST:-build-host}"
           export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH}"
           export FAKESTAT="${FAKESTAT}"
           export FAKETIME="${FAKETIME}"
 
           echo "KBUILD_BUILD_TIMESTAMP=$KBUILD_BUILD_TIMESTAMP"
           echo "KBUILD_BUILD_VERSION=$KBUILD_BUILD_VERSION"
+          echo "KBUILD_BUILD_USER=$KBUILD_BUILD_USER"
+          echo "KBUILD_BUILD_HOST=$KBUILD_BUILD_HOST"
           echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
           echo "FAKESTAT=$FAKESTAT"
           echo "FAKETIME=$FAKETIME"
 
           echo "KBUILD_BUILD_TIMESTAMP=$KBUILD_BUILD_TIMESTAMP" >> $GITHUB_ENV
           echo "KBUILD_BUILD_VERSION=$KBUILD_BUILD_VERSION" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_USER=$KBUILD_BUILD_USER" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_HOST=$KBUILD_BUILD_HOST" >> $GITHUB_ENV
           echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" >> $GITHUB_ENV
           echo "FAKESTAT=$FAKESTAT" >> $GITHUB_ENV
           echo "FAKETIME=$FAKETIME" >> $GITHUB_ENV
@@ -601,6 +610,8 @@ jobs:
           echo 'export FAKETIME="'$FAKETIME'"' >> cc-wrapper
           echo 'export KBUILD_BUILD_TIMESTAMP="'$KBUILD_BUILD_TIMESTAMP'"' >> cc-wrapper
           echo 'export KBUILD_BUILD_VERSION="'$KBUILD_BUILD_VERSION'"' >> cc-wrapper
+          echo 'export KBUILD_BUILD_USER="'$KBUILD_BUILD_USER'"' >> cc-wrapper
+          echo 'export KBUILD_BUILD_HOST="'$KBUILD_BUILD_HOST'"' >> cc-wrapper
           echo 'export SOURCE_DATE_EPOCH="'$SOURCE_DATE_EPOCH'"' >> cc-wrapper
           echo 'ccache $REAL_CLANG_PATH "$@"' >> cc-wrapper
 
@@ -610,6 +621,8 @@ jobs:
           echo 'export FAKETIME="'$FAKETIME'"' >> ld-wrapper
           echo 'export KBUILD_BUILD_TIMESTAMP="'$KBUILD_BUILD_TIMESTAMP'"' >> ld-wrapper
           echo 'export KBUILD_BUILD_VERSION="'$KBUILD_BUILD_VERSION'"' >> ld-wrapper
+          echo 'export KBUILD_BUILD_USER="'$KBUILD_BUILD_USER'"' >> ld-wrapper
+          echo 'export KBUILD_BUILD_HOST="'$KBUILD_BUILD_HOST'"' >> ld-wrapper
           echo 'export SOURCE_DATE_EPOCH="'$SOURCE_DATE_EPOCH'"' >> ld-wrapper
           echo 'ld.lld "$@"' >> ld-wrapper
           
@@ -620,6 +633,8 @@ jobs:
           echo 'export FAKETIME="'$FAKETIME'"' >> test-wrapper.sh
           echo 'export KBUILD_BUILD_TIMESTAMP="'$KBUILD_BUILD_TIMESTAMP'"' >> test-wrapper.sh
           echo 'export KBUILD_BUILD_VERSION="'$KBUILD_BUILD_VERSION'"' >> test-wrapper.sh
+          echo 'export KBUILD_BUILD_USER="'$KBUILD_BUILD_USER'"' >> test-wrapper.sh
+          echo 'export KBUILD_BUILD_HOST="'$KBUILD_BUILD_HOST'"' >> test-wrapper.sh
           echo 'export SOURCE_DATE_EPOCH="'$SOURCE_DATE_EPOCH'"' >> test-wrapper.sh
           echo 'echo ">>> Wrapper 内部环境检查完毕."' >> test-wrapper.sh
           echo 'exec "$@"' >> test-wrapper.sh
@@ -662,6 +677,8 @@ jobs:
 
           export KBUILD_BUILD_TIMESTAMP="$KBUILD_BUILD_TIMESTAMP"
           export KBUILD_BUILD_VERSION="${KBUILD_BUILD_VERSION:-1}"
+          export KBUILD_BUILD_USER="${KBUILD_BUILD_USER:-kleaf}"
+          export KBUILD_BUILD_HOST="${KBUILD_BUILD_HOST:-build-host}"
           export SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH"
           
           sudo rm -rf /usr/share/dotnet &
