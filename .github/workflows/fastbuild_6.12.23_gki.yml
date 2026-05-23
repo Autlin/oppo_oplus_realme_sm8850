@@ -5,7 +5,7 @@ env:
   ANDROID_VERSION: 'android16'
   KERNEL_VERSION: '6.12'
   SUB_VERSION: '23_gki'
-  KERNEL_NAME: 'android16-5-ga8f88ad96df3-ab13929693-4k'
+  KERNEL_NAME: 'android16-5-gb23e74f69076-abogki452159376-4k'
   CCACHE_KEY: ccache-ecsv3-gki-6.12.23
 
 on:
@@ -95,10 +95,15 @@ on:
         type: boolean
         default: 'false'
       kernel_suffix:
-        description: '内核后缀(留空默认,开头别加连字符,勿加空格等影响指令运行的保留字符)'
+        description: '自定义内核后缀(留空使用随机字符串；开头别加连字符，勿加空格/斜杠等特殊字符)'
         required: false
         type: string
         default: ''
+      build_time:
+        description: '自定义构建时间(输入F使用当前UTC时间；例：Tue Oct 14 12:08:17 UTC 2025)'
+        required: false
+        type: string
+        default: 'F'
 
 jobs:
   build:
@@ -106,6 +111,8 @@ jobs:
     outputs:
       ksuver: ${{ steps.ksu_version.outputs.ksuver }}
       ak3name: ${{ steps.create_zip.outputs.ak3name }}
+      kernel_suffix: ${{ steps.custom_vars.outputs.kernel_suffix }}
+      build_time_form: ${{ steps.custom_vars.outputs.build_time_form }}
     permissions:
       actions: write
       contents: read
@@ -262,7 +269,7 @@ jobs:
           if [[ ${{ github.event.inputs.ksu_type }} == "sukisu" || ${{ github.event.inputs.ksu_type }} == "resukisu" ]]; then
             echo "正在配置ReSukiSU（由于SukiSU长期未维护无法正常编译，且ReSukiSU兼容sukisu管理器，故SukiSU源码仓库已重定向为resukisu）..."
             curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/refs/heads/main/kernel/setup.sh" | bash -s main
-            echo 'CONFIG_KSU_FULL_NAME_FORMAT="%TAG_NAME%-%COMMIT_SHA%@cctv18"' >> ./common/arch/arm64/configs/gki_defconfig
+            echo 'CONFIG_KSU_FULL_NAME_FORMAT="%TAG_NAME%-%COMMIT_SHA%@Autlin"' >> ./common/arch/arm64/configs/gki_defconfig
             cd ./KernelSU
             # 生成自定义版本号（基于提交计数）, 失败时使用 114514
             KSU_VERSION=$(expr $(git rev-list --count main) + 30700 2>/dev/null || echo 114514)
@@ -539,23 +546,72 @@ jobs:
           curl -sSL https://github.com/cctv18/Baseband-guard/raw/master/setup.sh | bash
           sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/selinux/selinux,baseband_guard/ } }' security/Kconfig
 
+      - name: 初始化自定义后缀和构建时间
+        id: custom_vars
+        run: |
+          INPUT_SUFFIX="${{ github.event.inputs.kernel_suffix }}"
+
+          if [[ -n "$INPUT_SUFFIX" ]]; then
+            FINAL_KERNEL_SUFFIX="$INPUT_SUFFIX"
+          else
+            RANDOM_DIGIT="$(shuf -i 1-9 -n 1)"
+            RANDOM_HASH="$(head -c 1024 /dev/urandom | sha1sum | cut -c1-12)"
+            FINAL_KERNEL_SUFFIX="${RANDOM_DIGIT}-o-g${RANDOM_HASH}"
+          fi
+
+          if [[ "$FINAL_KERNEL_SUFFIX" == -* ]] || \
+             [[ "$FINAL_KERNEL_SUFFIX" =~ [[:space:]] ]] || \
+             [[ "$FINAL_KERNEL_SUFFIX" == *"/"* ]] || \
+             [[ "$FINAL_KERNEL_SUFFIX" == *"\\"* ]] || \
+             [[ "$FINAL_KERNEL_SUFFIX" == *"&"* ]]; then
+            echo "::error::内核后缀不能以 - 开头，且不能包含空格、斜杠、反斜杠、& 等字符"
+            exit 1
+          fi
+
+          INPUT_BUILD_TIME="${{ github.event.inputs.build_time }}"
+
+          if [[ -z "$INPUT_BUILD_TIME" || "$INPUT_BUILD_TIME" == "F" || "$INPUT_BUILD_TIME" == "f" ]]; then
+            DATESTR="$(TZ='UTC' date +'%a %b %d %T %Z %Y')"
+          else
+            DATESTR="$INPUT_BUILD_TIME"
+          fi
+
+          FAKE_DATE="$(TZ='UTC' date -d "$DATESTR" +'%Y-%m-%d %H:%M:%S' 2>/dev/null || true)"
+          SOURCE_EPOCH="$(TZ='UTC' date -d "$DATESTR" +'%s' 2>/dev/null || true)"
+
+          if [[ -z "$FAKE_DATE" || -z "$SOURCE_EPOCH" ]]; then
+            echo "::error::build_time 无法解析，请使用类似 Tue Oct 14 12:08:17 UTC 2025 的格式，或输入 F"
+            exit 1
+          fi
+
+          BUILD_TIME_FORM="$(TZ='Asia/Shanghai' date -d "@$SOURCE_EPOCH" +'%Y-%m-%d %H:%M:%S')"
+
+          echo "FINAL_KERNEL_SUFFIX=$FINAL_KERNEL_SUFFIX" >> "$GITHUB_ENV"
+          echo "KBUILD_BUILD_TIMESTAMP=$DATESTR" >> "$GITHUB_ENV"
+          echo "KBUILD_BUILD_VERSION=1" >> "$GITHUB_ENV"
+          echo "KBUILD_BUILD_USER=kleaf" >> "$GITHUB_ENV"
+          echo "KBUILD_BUILD_HOST=build-host" >> "$GITHUB_ENV"
+          echo "SOURCE_DATE_EPOCH=$SOURCE_EPOCH" >> "$GITHUB_ENV"
+          echo "FAKESTAT=$FAKE_DATE" >> "$GITHUB_ENV"
+          echo "FAKETIME=@$FAKE_DATE" >> "$GITHUB_ENV"
+          echo "BUILD_TIME_FORM=$BUILD_TIME_FORM" >> "$GITHUB_ENV"
+
+          echo "kernel_suffix=$FINAL_KERNEL_SUFFIX" >> "$GITHUB_OUTPUT"
+          echo "build_time_form=$BUILD_TIME_FORM" >> "$GITHUB_OUTPUT"
+
+          echo "最终内核后缀：$FINAL_KERNEL_SUFFIX"
+          echo "最终构建时间：$DATESTR"
+          echo "构建用户：kleaf@build-host"
+
       - name: 添加制作名称
         run: |
           cd kernel_workspace
           echo "替换内核版本后缀..."
-          if [[ -n "${{ github.event.inputs.kernel_suffix }}" ]]; then
-            echo "当前内核版本后缀：${{ github.event.inputs.kernel_suffix }}"
-            for f in ./common/scripts/setlocalversion; do
-              sed -i "\$s|echo \"\\\$res\"|echo \"-${{ github.event.inputs.kernel_suffix }}\"|" "$f"
-            done
-            sudo sed -i 's/-4k/-${{ github.event.inputs.KERNEL_SUFFIX }}/g' ./common/arch/arm64/configs/gki_defconfig
-          else
-            echo "当前内核版本后缀：${{ env.KERNEL_NAME }}"
-            for f in ./common/scripts/setlocalversion; do
-              sed -i "\$s|echo \"\\\$res\"|echo \"-${{ env.KERNEL_NAME }}\"|" "$f"
-            done
-            sudo sed -i 's/-4k/-${{ env.KERNEL_NAME }}/g' ./common/arch/arm64/configs/gki_defconfig
-          fi
+          echo "当前内核版本后缀：${FINAL_KERNEL_SUFFIX}"
+          for f in ./common/scripts/setlocalversion; do
+            sed -i "\$s|echo \"\\\$res\"|echo \"-${FINAL_KERNEL_SUFFIX}\"|" "$f"
+          done
+          sudo sed -i "s|-4k|-${FINAL_KERNEL_SUFFIX}|g" ./common/arch/arm64/configs/gki_defconfig
           sed -i 's/${scm_version}//' ./common/scripts/setlocalversion
           echo "CONFIG_LOCALVERSION_AUTO=n" >> ./common/arch/arm64/configs/gki_defconfig
            
@@ -592,8 +648,43 @@ jobs:
           wget https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/lib/libfakestat.so
           wget https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/lib/libfaketimeMT.so
           chmod 777 ./*.so
-          export FAKESTAT="2025-05-25 12:00:00"
-          export FAKETIME="@2025-05-25 13:00:00"
+
+          export KBUILD_BUILD_TIMESTAMP="${KBUILD_BUILD_TIMESTAMP}"
+          export KBUILD_BUILD_VERSION="${KBUILD_BUILD_VERSION:-1}"
+          export KBUILD_BUILD_USER="kleaf"
+          export KBUILD_BUILD_HOST="build-host"
+          export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH}"
+          export FAKESTAT="${FAKESTAT}"
+          export FAKETIME="${FAKETIME}"
+
+          echo "正在强制设置内核构建用户为 kleaf@build-host..."
+          cat <<'MKCOMPILE_EOF' | sed 's/^ *//' > scripts/mkcompile_h
+          #!/bin/sh
+          # SPDX-License-Identifier: GPL-2.0
+
+          UTS_MACHINE=$1
+          CC_VERSION="$2"
+          LD=$3
+
+          LINUX_COMPILE_BY="kleaf"
+          LINUX_COMPILE_HOST="build-host"
+
+          LD_VERSION=$(LC_ALL=C "$LD" -v | head -n1 | sed -e 's/(compatible with [^)]*)//' -e 's/[[:space:]]*$//')
+
+          cat <<EOF
+          #define UTS_MACHINE "${UTS_MACHINE}"
+          #define LINUX_COMPILE_BY "${LINUX_COMPILE_BY}"
+          #define LINUX_COMPILE_HOST "${LINUX_COMPILE_HOST}"
+          #define LINUX_COMPILER "${CC_VERSION}, ${LD_VERSION}"
+          EOF
+          MKCOMPILE_EOF
+          chmod +x scripts/mkcompile_h
+
+          echo "KBUILD_BUILD_TIMESTAMP=$KBUILD_BUILD_TIMESTAMP" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_VERSION=$KBUILD_BUILD_VERSION" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_USER=$KBUILD_BUILD_USER" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_HOST=$KBUILD_BUILD_HOST" >> $GITHUB_ENV
+          echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" >> $GITHUB_ENV
           echo "FAKESTAT=$FAKESTAT" >> $GITHUB_ENV
           echo "FAKETIME=$FAKETIME" >> $GITHUB_ENV
           SO_DIR=$(pwd)
@@ -604,12 +695,22 @@ jobs:
           echo 'export LD_PRELOAD="'$PRELOAD_LIBS'"' >> cc-wrapper
           echo 'export FAKESTAT="'$FAKESTAT'"' >> cc-wrapper
           echo 'export FAKETIME="'$FAKETIME'"' >> cc-wrapper
+          echo 'export KBUILD_BUILD_TIMESTAMP="'$KBUILD_BUILD_TIMESTAMP'"' >> cc-wrapper
+          echo 'export KBUILD_BUILD_VERSION="'$KBUILD_BUILD_VERSION'"' >> cc-wrapper
+          echo 'export KBUILD_BUILD_USER="'$KBUILD_BUILD_USER'"' >> cc-wrapper
+          echo 'export KBUILD_BUILD_HOST="'$KBUILD_BUILD_HOST'"' >> cc-wrapper
+          echo 'export SOURCE_DATE_EPOCH="'$SOURCE_DATE_EPOCH'"' >> cc-wrapper
           echo 'ccache $REAL_CLANG_PATH "$@"' >> cc-wrapper
           #创建 LD (链接器) 包装器
           echo '#!/bin/bash' > ld-wrapper
           echo 'export LD_PRELOAD="'$PRELOAD_LIBS'"' >> ld-wrapper
           echo 'export FAKESTAT="'$FAKESTAT'"' >> ld-wrapper
           echo 'export FAKETIME="'$FAKETIME'"' >> ld-wrapper
+          echo 'export KBUILD_BUILD_TIMESTAMP="'$KBUILD_BUILD_TIMESTAMP'"' >> ld-wrapper
+          echo 'export KBUILD_BUILD_VERSION="'$KBUILD_BUILD_VERSION'"' >> ld-wrapper
+          echo 'export KBUILD_BUILD_USER="'$KBUILD_BUILD_USER'"' >> ld-wrapper
+          echo 'export KBUILD_BUILD_HOST="'$KBUILD_BUILD_HOST'"' >> ld-wrapper
+          echo 'export SOURCE_DATE_EPOCH="'$SOURCE_DATE_EPOCH'"' >> ld-wrapper
           echo 'ld.lld "$@"' >> ld-wrapper
           
           # 测试时间劫持测试是否正常工作
@@ -618,6 +719,11 @@ jobs:
           echo 'export LD_PRELOAD="'$PRELOAD_LIBS'"' >> test-wrapper.sh
           echo 'export FAKESTAT="'$FAKESTAT'"' >> test-wrapper.sh
           echo 'export FAKETIME="'$FAKETIME'"' >> test-wrapper.sh
+          echo 'export KBUILD_BUILD_TIMESTAMP="'$KBUILD_BUILD_TIMESTAMP'"' >> test-wrapper.sh
+          echo 'export KBUILD_BUILD_VERSION="'$KBUILD_BUILD_VERSION'"' >> test-wrapper.sh
+          echo 'export KBUILD_BUILD_USER="'$KBUILD_BUILD_USER'"' >> test-wrapper.sh
+          echo 'export KBUILD_BUILD_HOST="'$KBUILD_BUILD_HOST'"' >> test-wrapper.sh
+          echo 'export SOURCE_DATE_EPOCH="'$SOURCE_DATE_EPOCH'"' >> test-wrapper.sh
           echo 'echo ">>> Wrapper 内部环境检查完毕."' >> test-wrapper.sh
           echo 'exec "$@"' >> test-wrapper.sh # 执行所有传入的参数
           chmod +x test-wrapper.sh
@@ -661,7 +767,15 @@ jobs:
           export LD=ld.lld HOSTLD=ld.lld AR=llvm-ar NM=llvm-nm AS=clang READELF=llvm-readelf
           export OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump OBJSIZE=llvm-size STRIP=llvm-strip
           # 5. 编译前运行官方环境配置脚本
+          FINAL_KBUILD_BUILD_TIMESTAMP="$KBUILD_BUILD_TIMESTAMP"
+          FINAL_KBUILD_BUILD_VERSION="$KBUILD_BUILD_VERSION"
+          FINAL_SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH"
           source "./_setup_env.sh" 2>/dev/null || true
+          export KBUILD_BUILD_TIMESTAMP="$FINAL_KBUILD_BUILD_TIMESTAMP"
+          export KBUILD_BUILD_VERSION="${FINAL_KBUILD_BUILD_VERSION:-1}"
+          export KBUILD_BUILD_USER="kleaf"
+          export KBUILD_BUILD_HOST="build-host"
+          export SOURCE_DATE_EPOCH="$FINAL_SOURCE_DATE_EPOCH"
           
           #在构建内核的同时清除不必要的.NET, Android NDK, Haskell, CodeQL运行库，清理空间且不阻塞后续步骤运行
           sudo rm -rf /usr/share/dotnet &
@@ -722,9 +836,10 @@ jobs:
         id: create_zip
         run: |
           cd kernel_workspace
-          git clone https://github.com/cctv18/AnyKernel3 --depth=1
+          git clone https://github.com/Autlin/AnyKernel3 --depth=1
           rm -rf ./AnyKernel3/.git
           cd AnyKernel3
+          sed -i 's#Build by cctv18#Build by Autlin#g' anykernel.sh
           cp ../common/out/arch/arm64/boot/Image ./Image
           if [[ ! -f ./Image ]]; then
             echo "未找到内核镜像文件，构建可能出错"
@@ -747,23 +862,15 @@ jobs:
           if [[ ${{ github.event.inputs.kpm_enable }} == 'kpn' ]]; then
             wget https://github.com/cctv18/KPatch-Next/releases/latest/download/kpn.zip
           fi
-          if [[ -n "${{ github.event.inputs.kernel_suffix }}" ]]; then
-            AK3_NAME=AnyKernel3_${KSU_TYPENAME}_${{ env.KSUVER }}_${{ env.KERNEL_VERSION }}_${{ github.event.inputs.kernel_suffix }}.zip
-          else
-            AK3_NAME=AnyKernel3_${KSU_TYPENAME}_${{ env.KSUVER }}_${{ env.KERNEL_VERSION }}_${{ env.KERNEL_NAME }}.zip
-          fi
+          AK3_NAME=AnyKernel3_${KSU_TYPENAME}_${{ env.KSUVER }}_${{ env.KERNEL_VERSION }}_${FINAL_KERNEL_SUFFIX}.zip
           zip -r ../$AK3_NAME ./*
           echo "ak3name=$AK3_NAME" >> $GITHUB_OUTPUT
           
           #为AK3添加注释（调试信息）
           CLEAN_SUB_VERSION="${{ env.SUB_VERSION }}"
           CLEAN_SUB_VERSION="${CLEAN_SUB_VERSION%_mtk}"
-          if [[ -n "${{ github.event.inputs.kernel_suffix }}" ]]; then
-            FULL_VERSION=${{ env.KERNEL_VERSION }}.${CLEAN_SUB_VERSION}-${{ github.event.inputs.kernel_suffix }}
-          else
-            FULL_VERSION=${{ env.KERNEL_VERSION }}.${CLEAN_SUB_VERSION}-${{ env.KERNEL_NAME }}
-          fi
-          TIME_NOW="$(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S')"
+          FULL_VERSION=${{ env.KERNEL_VERSION }}.${CLEAN_SUB_VERSION}-${FINAL_KERNEL_SUFFIX}
+          TIME_NOW="${BUILD_TIME_FORM}"
           echo "Author: $GITHUB_ACTOR" > ./ak3.log
           echo "Repo: $GITHUB_REPOSITORY" >> ./ak3.log
           echo "Branch: $GITHUB_REF_NAME" >> ./ak3.log
@@ -818,17 +925,12 @@ jobs:
         run: |
           CLEAN_SUB_VERSION="${{ env.SUB_VERSION }}"
           CLEAN_SUB_VERSION="${CLEAN_SUB_VERSION%_mtk}"
-          if [[ -n "${{ github.event.inputs.kernel_suffix }}" ]]; then
-            FULL_VERSION=${{ env.KERNEL_VERSION }}.${CLEAN_SUB_VERSION}-${{ github.event.inputs.kernel_suffix }}
-            echo "FULL_VERSION=$FULL_VERSION" >> $GITHUB_ENV
-            export FULL_VERSION=$FULL_VERSION
-          else
-            FULL_VERSION=${{ env.KERNEL_VERSION }}.${CLEAN_SUB_VERSION}-${{ env.KERNEL_NAME }}
-            echo "FULL_VERSION=$FULL_VERSION" >> $GITHUB_ENV
-            export FULL_VERSION=$FULL_VERSION
-          fi
+          KERNEL_SUFFIX="${{ needs.build.outputs.kernel_suffix }}"
+          FULL_VERSION=${{ env.KERNEL_VERSION }}.${CLEAN_SUB_VERSION}-${KERNEL_SUFFIX}
+          echo "FULL_VERSION=$FULL_VERSION" >> $GITHUB_ENV
+          export FULL_VERSION=$FULL_VERSION
           TIME="$(TZ='Asia/Shanghai' date +'%y%m%d%H%M%S')"
-          TIME_FORM="$(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S')"
+          TIME_FORM="${{ needs.build.outputs.build_time_form }}"
           echo "TIME=$TIME" >> $GITHUB_ENV
           echo "TIME_FORM=$TIME_FORM" >> $GITHUB_ENV
           TAG_HEAD="OPPO-OPlus-Realme-build"
