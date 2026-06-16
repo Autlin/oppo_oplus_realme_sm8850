@@ -808,7 +808,7 @@ jobs:
          
       - name: 应用KPM并修补内核
         if: inputs.kpm_enable
-         run: |
+        run: |
           echo "正在应用KP-N并修补内核..."
           cd kernel_workspace/common/out/arch/arm64/boot
           wget https://github.com/KernelSU-Next/KPatch-Next/releases/latest/download/kptools-linux
