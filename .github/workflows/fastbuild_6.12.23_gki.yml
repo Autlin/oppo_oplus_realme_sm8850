@@ -6,7 +6,7 @@ env:
   KERNEL_VERSION: '6.12'
   SUB_VERSION: '23_gki'
   KERNEL_NAME: 'android16-5-gb23e74f69076-abogki452159376-4k'
-  CCACHE_KEY: ccache-ecsv3-gki-6.12.23
+  CCACHE_KEY: ccache-ecsv4-6.12.23
 
 on:
   workflow_dispatch:
